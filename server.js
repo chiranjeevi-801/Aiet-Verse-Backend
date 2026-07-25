@@ -1,70 +1,60 @@
-// const express = require('express');
-// const mongoose = require('mongoose');
-// const cors = require('cors');
-// const dotenv = require('dotenv');
-// const Admission = require('./models/Admission');
+import express from 'express';
+import dotenv from 'dotenv';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import cookieParser from 'cookie-parser';
 
-// // Load environmental variables
-// dotenv.config();
+import connectDB from './config/db.js';
+import { setupSwagger } from './config/swagger.js';
+import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { apiLimiter } from './middleware/rateLimiter.js';
 
-// const app = express();
+// Route Imports
+import healthRoutes from './routes/healthRoutes.js';
+import admissionRoutes from './routes/admissionRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
+import appointmentRoutes from './routes/appointmentRoutes.js';
 
-// // Middleware: Allows your React frontend running on port 5173 to send data here
-// app.use(cors());
-// app.use(express.json());
+// Load env vars
+dotenv.config();
 
-// // Establish connection to Local MongoDB
-// mongoose.connect(process.env.MONGO_URI)
-//   .then(() => console.log('Connected to AIET Local MongoDB successfully.'))
-//   .catch(err => console.error('MongoDB connection structural failure:', err));
-
-// // HTTP POST Route: Receives applicant data from React and saves it
-// app.post('/api/admission', async (req, res) => {
-//   try {
-//     const newApplication = new Admission(req.body);
-//     await newApplication.save();
-//     res.status(201).json({ success: true, message: 'Application logged successfully!' });
-//   } catch (error) {
-//     res.status(500).json({ success: false, message: 'Server failed to process entry.', error: error.message });
-//   }
-// });
-
-// const PORT = process.env.PORT || 5000;
-// app.listen(PORT, () => console.log(`AIET Administrative Backend live on port ${PORT}`));
-
-
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-require('dotenv').config(); // Loads configuration keys securely from the .env file
-
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Middleware Configuration
-app.use(cors());
-app.use(express.json());
-
-// Main Database Connection Layer
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI);
-    console.log(`🚀 MongoDB Connected Safely: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`❌ Database Connection Failure: ${error.message}`);
-    process.exit(1); // Force terminates backend server script execution if the connection fails
-  }
-};
-
-// Establish Database Connection Instance
+// Connect to Database
 connectDB();
 
-// Root route placeholder to test health status
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: "online", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected" });
-});
+const app = express();
 
-// Start listening for inbound pipeline requests
+// Security and Optimization Middlewares
+app.use(helmet());
+app.use(compression());
+app.use(cookieParser());
+app.use(express.json());
+
+// CORS config restricted to React Frontend
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
+
+// Apply generic rate limiter to all routes
+app.use('/api', apiLimiter);
+
+// Setup Swagger Documentation
+setupSwagger(app);
+
+// Mount Routes
+app.use('/api/health', healthRoutes);
+app.use('/api/admission', admissionRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/appointment', appointmentRoutes);
+
+// Error Handling Middlewares
+app.use(notFound);
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+// lorema
 app.listen(PORT, () => {
-  console.log(`🛰️  Backend system active and listening on port: ${PORT}`);
+  console.log(`🛰️  Backend system active in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });

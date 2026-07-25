@@ -1,23 +1,37 @@
-// const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
-// const AdmissionSchema = new mongoose.Schema({
-//   fullName: { type: String, required: true },
-//   email: { type: String, required: true },
-//   phone: { type: String, required: true },
-//   course: { type: String, required: true },
-//   submittedAt: { type: Date, default: Date.now }
-// });
+const admissionSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+    },
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    course: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
 
-// module.exports = mongoose.model('Admission', AdmissionSchema);
+// Compound index to quickly find duplicate bookings
+admissionSchema.index({ email: 1, phone: 1, course: 1 }, { unique: true });
 
-const mongoose = require('mongoose');
+const Admission = mongoose.model('Admission', admissionSchema);
 
-const AdmissionSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true },
-  phone: { type: String, required: true },
-  course: { type: String, required: true },
-  submittedAt: { type: Date, default: Date.now }
-});
-
-module.exports = mongoose.model('Admission', AdmissionSchema);
+export default Admission;

@@ -1,10 +1,33 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
-const ContactSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true },
-  message: { type: String, required: true },
-  submittedAt: { type: Date, default: Date.now }
-});
+const contactSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+    },
+    message: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    ipAddress: {
+      type: String,
+      // Used to prevent spam/duplicate submissions from same IP rapidly
+    }
+  },
+  {
+    timestamps: true,
+  }
+);
 
-module.exports = mongoose.model('Contact', ContactSchema);
+const Contact = mongoose.model('Contact', contactSchema);
+
+export default Contact;

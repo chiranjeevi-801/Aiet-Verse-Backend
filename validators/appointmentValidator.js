@@ -2,7 +2,10 @@ import { body } from 'express-validator';
 
 export const validateAppointment = [
   body('name').notEmpty().withMessage('Name is required').trim(),
-  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+  body('email')
+    .if((value, { req }) => req.body.type === 'online' || (value && value.trim() !== ''))
+    .isEmail().withMessage('Valid email is required')
+    .normalizeEmail(),
   body('phone').notEmpty().withMessage('Phone number is required'),
   body('type').isIn(['offline', 'online']).withMessage('Type must be offline or online'),
   body('date').notEmpty().withMessage('Date is required')

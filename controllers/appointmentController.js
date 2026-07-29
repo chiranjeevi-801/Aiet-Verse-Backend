@@ -1,5 +1,10 @@
 import Appointment from '../models/Appointment.js';
 import Counter from '../models/Counter.js';
+import {
+  appendUGAdmission,
+  appendPGAdmission,
+  isPGCourse,
+} from '../helpers/excelHelper.js';
 
 // Helper to generate sequential token
 const getNextSequenceValue = async (sequenceName) => {
@@ -17,8 +22,21 @@ const getNextSequenceValue = async (sequenceName) => {
  * @access  Public
  */
 export const scheduleAppointment = async (req, res, next) => {
+  const reqTime = new Date().toISOString();
+  console.log(`\n📥 [REQUEST RECEIVED] POST /api/appointment at ${reqTime}`);
+  console.log('   Payload:', JSON.stringify(req.body));
+
   try {
     const { name, email, phone, type, date, desk, course } = req.body;
+
+    if (!name || !email || !phone || !type || !date) {
+      console.error('❌ [VALIDATION FAILED] Missing required appointment fields');
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, phone, type, and date are required.',
+      });
+    }
+    console.log('✅ [VALIDATION PASSED] Appointment payload validated');
 
     let token = '';
     let queueNumber = null;
@@ -29,7 +47,6 @@ export const scheduleAppointment = async (req, res, next) => {
       const paddedSeq = String(seq).padStart(3, '0');
       token = `AIET-2026-P${paddedSeq}`;
       
-      // Calculate a pseudo queue number based on today's appointments for that desk
       const today = new Date().toISOString().split('T')[0];
       const count = await Appointment.countDocuments({ date: today, desk, type: 'offline' });
       queueNumber = count + 1;
@@ -39,25 +56,52 @@ export const scheduleAppointment = async (req, res, next) => {
       const paddedSeq = String(seq).padStart(3, '0');
       token = `AIET-2026-O${paddedSeq}`;
       
-      // Generate a mock google meet link
       const randomStr = Math.random().toString(36).substring(2, 6) + '-' + Math.random().toString(36).substring(2, 6);
       virtualLink = `https://meet.google.com/aie-${randomStr}`;
     }
 
-    console.log("DEBUG: Appointments")
-
     const appointment = await Appointment.create({
-      name,
-      email,
-      phone,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone.trim(),
       type,
       date,
-      desk,
-      course,
+      desk: desk || '',
+      course: course ? course.trim() : 'CSE',
       token,
       queueNumber,
       virtualLink
     });
+
+    console.log(`✅ [MONGODB SAVE SUCCESS] Document created in Appointments collection. ID: ${appointment._id}`);
+
+    // Auto-update Excel file
+    const isPG = isPGCourse(appointment.course);
+    const excelData = {
+      token: appointment.token,
+      name: appointment.name,
+      email: appointment.email,
+      phone: appointment.phone,
+      course: appointment.course || '',
+      desk: appointment.desk || '',
+      date: appointment.date || '',
+      type: appointment.type,
+      appointmentType: appointment.type === 'online' ? 'Online Video Counselling' : 'Offline Campus Counselling',
+      createdAt: appointment.createdAt || new Date(),
+    };
+
+    try {
+      if (isPG) {
+        await appendPGAdmission(excelData);
+      } else {
+        await appendUGAdmission(excelData);
+      }
+      console.log('✅ [EXCEL UPDATED SUCCESS] Appointment record appended to Excel file.');
+    } catch (excelErr) {
+      console.error('❌ [EXCEL UPDATE FAILED] Error appending appointment to Excel:', excelErr.message);
+    }
+
+    console.log('✅ [ADMIN DASHBOARD DATA AVAILABLE] Appointment record ready for dashboard aggregation.');
 
     res.status(201).json({
       success: true,
@@ -72,6 +116,7 @@ export const scheduleAppointment = async (req, res, next) => {
     });
 
   } catch (error) {
+    console.error('❌ [ERROR IN SCHEDULE APPOINTMENT]:', error.message, error.stack);
     next(error);
   }
 };

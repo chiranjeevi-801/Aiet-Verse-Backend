@@ -34,9 +34,9 @@ app.use(compression());
 app.use(cookieParser());
 app.use(express.json());
 
-// CORS config restricted to React Frontend
+// CORS configuration to allow all origins
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));

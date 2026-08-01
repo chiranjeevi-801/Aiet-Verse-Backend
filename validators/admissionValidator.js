@@ -6,5 +6,16 @@ export const validateAdmission = [
   body('phone')
     .notEmpty().withMessage('Phone number is required')
     .matches(/^[0-9+\-\s()]+$/).withMessage('Invalid phone number format'),
-  body('course').notEmpty().withMessage('Course selection is required').trim(),
+  body('course').optional().trim(),
+  body('branch').optional().trim(),
+  body('mode').optional().trim(),
+  body('appointmentType').optional().trim(),
+  body('admissionType').optional().trim(),
+  body('category').optional().trim(),
+  body().custom((value, { req }) => {
+    if (!req.body.course && !req.body.branch) {
+      throw new Error('Course or branch selection is required');
+    }
+    return true;
+  }),
 ];

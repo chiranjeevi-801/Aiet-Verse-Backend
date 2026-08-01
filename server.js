@@ -6,6 +6,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 
 import connectDB from './config/db.js';
+import { seedAdminUsers } from './config/seedAdmin.js';
 import { setupSwagger } from './config/swagger.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
@@ -15,12 +16,15 @@ import healthRoutes from './routes/healthRoutes.js';
 import admissionRoutes from './routes/admissionRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 // Load env vars
 dotenv.config();
 
-// Connect to Database
-connectDB();
+// Connect to Database and Seed Admin Users
+connectDB().then(() => {
+  seedAdminUsers();
+});
 
 const app = express();
 
@@ -33,7 +37,7 @@ app.use(express.json());
 // CORS config restricted to React Frontend
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
 
@@ -48,13 +52,14 @@ app.use('/api/health', healthRoutes);
 app.use('/api/admission', admissionRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/appointment', appointmentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-// lorema
+
 app.listen(PORT, () => {
-  console.log(`🛰️  Backend system active in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`🛰️  Backend system active in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
 });

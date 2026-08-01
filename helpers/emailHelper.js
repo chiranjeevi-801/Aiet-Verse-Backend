@@ -1,24 +1,91 @@
 import nodemailer from 'nodemailer';
 
+let cachedTransporter = null;
+
 /**
- * Creates nodemailer transporter using environment configuration
+ * Creates and returns cached nodemailer transporter using environment configuration
  */
 const getTransporter = () => {
+  if (cachedTransporter) return cachedTransporter;
+
   const host = process.env.EMAIL_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '587', 10);
+  const port = parseInt(process.env.EMAIL_PORT || process.env.SMTP_PORT || '465', 10);
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
   if (user && pass) {
-    return nodemailer.createTransport({
+    cachedTransporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      family: 4, // Force IPv4 resolution to prevent IPv6 socket timeouts on Render/cloud hosts
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: { user, pass },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
+    return cachedTransporter;
   }
 
   return null;
+};
+
+/**
+ * Verifies the SMTP transport connection on server startup
+ */
+export const verifyEmailSetup = async () => {
+  const user = process.env.EMAIL_USER || process.env.SMTP_USER;
+  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
+
+  if (!user || !pass) {
+    console.warn('⚠️ [SMTP WARNING] EMAIL_USER or EMAIL_PASS environment variables are missing! Email delivery will run in MOCK mode.');
+    return false;
+  }
+
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.error('❌ [SMTP ERROR] Failed to initialize Nodemailer transporter.');
+    return false;
+  }
+
+  try {
+    await transporter.verify();
+    console.log('✅ [SMTP SUCCESS] Connected to mail server successfully. Transporter is ready to send emails.');
+    return true;
+  } catch (error) {
+    console.error('❌ [SMTP CONNECTION FAILED] Unable to verify SMTP connection:', error.message);
+    console.error('   Diagnostic Hint: Verify EMAIL_USER, EMAIL_PASS (Gmail App Password), EMAIL_HOST, and EMAIL_PORT on Render.');
+    return false;
+  }
+};
+
+/**
+ * Helper to compute valid From header matching authenticated SMTP user
+ */
+const getFromAddress = (defaultLabel) => {
+  const user = process.env.EMAIL_USER || process.env.SMTP_USER;
+  const rawFrom = process.env.EMAIL_FROM;
+
+  if (!user) {
+    return rawFrom || `"${defaultLabel}" <admissions@aiet.org.in>`;
+  }
+
+  if (rawFrom) {
+    if (rawFrom.includes(`<${user}>`)) {
+      return rawFrom;
+    }
+    const match = rawFrom.match(/"([^"]+)"/);
+    const label = match ? match[1] : defaultLabel;
+    return `"${label}" <${user}>`;
+  }
+
+  return `"${defaultLabel}" <${user}>`;
 };
 
 /**
@@ -40,7 +107,7 @@ export const sendStudentConfirmationEmail = async (data) => {
   } = data;
 
   const subject = 'AIET Admission Application Received';
-  const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || '"AIET Admissions" <admissions@aiet.org.in>';
+  const fromEmail = getFromAddress('AIET Admissions');
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -363,7 +430,7 @@ export const sendAdminNotificationEmail = async (data) => {
 
   const adminEmail = process.env.ADMIN_EMAIL || 'admissions@aiet.org.in';
   const subject = 'New Admission Application Received';
-  const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || '"AIET Portal" <admissions@aiet.org.in>';
+  const fromEmail = getFromAddress('AIET Portal');
 
   const htmlContent = `
 <!DOCTYPE html>

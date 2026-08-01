@@ -5,6 +5,10 @@ import {
   appendPGAdmission,
   isPGCourse,
 } from '../helpers/excelHelper.js';
+import {
+  sendStudentConfirmationEmail,
+  sendAdminNotificationEmail,
+} from '../helpers/emailHelper.js';
 
 // Helper to generate sequential token
 const getNextSequenceValue = async (sequenceName) => {
@@ -27,7 +31,7 @@ export const scheduleAppointment = async (req, res, next) => {
   console.log('   Payload:', JSON.stringify(req.body));
 
   try {
-    const { name, email, phone, type, date, desk, course } = req.body;
+    const { name, email, phone, type, date, desk, course, category: reqCategory, admissionType } = req.body;
 
     if (!name || !email || !phone || !type || !date) {
       console.error('❌ [VALIDATION FAILED] Missing required appointment fields');
@@ -60,6 +64,10 @@ export const scheduleAppointment = async (req, res, next) => {
       virtualLink = `https://meet.google.com/aie-${randomStr}`;
     }
 
+    const selectedCourse = course ? course.trim() : 'CSE';
+    const isPG = isPGCourse(selectedCourse) || (reqCategory && reqCategory.toUpperCase() === 'PG') || (admissionType && admissionType.toUpperCase() === 'PG');
+    const category = (reqCategory || admissionType || (isPG ? 'PG' : 'UG')).toUpperCase();
+
     const appointment = await Appointment.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
@@ -67,7 +75,7 @@ export const scheduleAppointment = async (req, res, next) => {
       type,
       date,
       desk: desk || '',
-      course: course ? course.trim() : 'CSE',
+      course: selectedCourse,
       token,
       queueNumber,
       virtualLink
@@ -76,7 +84,6 @@ export const scheduleAppointment = async (req, res, next) => {
     console.log(`✅ [MONGODB SAVE SUCCESS] Document created in Appointments collection. ID: ${appointment._id}`);
 
     // Auto-update Excel file
-    const isPG = isPGCourse(appointment.course);
     const excelData = {
       token: appointment.token,
       name: appointment.name,
@@ -102,6 +109,53 @@ export const scheduleAppointment = async (req, res, next) => {
     }
 
     console.log('✅ [ADMIN DASHBOARD DATA AVAILABLE] Appointment record ready for dashboard aggregation.');
+
+    // Determine Mode for Email
+    const mode = type === 'online' 
+      ? 'Online Counseling (Remote)' 
+      : 'Offline Campus Counseling';
+
+    // Capture Client IP Address & Browser
+    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '';
+    const ipAddress = (typeof rawIp === 'string' ? rawIp.split(',')[0] : rawIp) || '127.0.0.1';
+    const browser = req.headers['user-agent'] || 'Unknown Browser';
+
+    const now = new Date();
+    const submissionDate = appointment.date || now.toISOString().split('T')[0];
+    const submissionTime = `${submissionDate} ${now.toTimeString().split(' ')[0]}`;
+
+    // Prepare Email Payload
+    const emailData = {
+      name: appointment.name,
+      email: appointment.email,
+      phone: appointment.phone,
+      category,
+      mode,
+      course: appointment.course,
+      submissionDate,
+      submissionTime,
+      tokenNumber: appointment.token,
+      ipAddress,
+      browser,
+    };
+
+    // Dispatch Student Confirmation Email & Admin Notification Email
+    Promise.allSettled([
+      sendStudentConfirmationEmail(emailData),
+      sendAdminNotificationEmail(emailData),
+    ]).then((results) => {
+      if (results[0].status === 'fulfilled') {
+        console.log('✅ [STUDENT EMAIL SUCCESS] Student confirmation email processed.');
+      } else {
+        console.error('❌ [STUDENT EMAIL ERROR]:', results[0].reason);
+      }
+
+      if (results[1].status === 'fulfilled') {
+        console.log('✅ [ADMIN EMAIL SUCCESS] Admin notification email processed.');
+      } else {
+        console.error('❌ [ADMIN EMAIL ERROR]:', results[1].reason);
+      }
+    });
 
     res.status(201).json({
       success: true,

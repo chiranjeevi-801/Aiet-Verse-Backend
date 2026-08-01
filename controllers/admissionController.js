@@ -4,6 +4,10 @@ import {
   appendPGAdmission,
   isPGCourse,
 } from '../helpers/excelHelper.js';
+import {
+  sendStudentConfirmationEmail,
+  sendAdminNotificationEmail,
+} from '../helpers/emailHelper.js';
 
 /**
  * @desc    Submit an online seat booking / admission request
@@ -16,20 +20,32 @@ export const createAdmission = async (req, res, next) => {
   console.log('   Payload:', JSON.stringify(req.body));
 
   try {
-    const { name, email, phone, course } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      course,
+      branch,
+      category: reqCategory,
+      admissionType,
+      mode: reqMode,
+      appointmentType,
+    } = req.body;
 
-    if (!name || !email || !phone || !course) {
+    const selectedCourse = (course || branch || '').trim();
+
+    if (!name || !email || !phone || !selectedCourse) {
       console.error('❌ [VALIDATION FAILED] Missing required fields in body');
       return res.status(400).json({
         success: false,
-        message: 'Name, email, phone, and course are required fields.',
+        message: 'Name, email, phone, and course/branch are required fields.',
       });
     }
-    console.log('✅ [VALIDATION PASSED] Name, email, phone, and course verified');
+    console.log('✅ [VALIDATION PASSED] Name, email, phone, and course/branch verified');
 
     const normEmail = email.toLowerCase().trim();
     const normPhone = phone.trim();
-    const normCourse = course.trim();
+    const normCourse = selectedCourse;
 
     // Check for existing admission to prevent duplicate submissions
     const existingAdmission = await Admission.findOne({
@@ -48,9 +64,24 @@ export const createAdmission = async (req, res, next) => {
     console.log('✅ [DUPLICATE CHECK PASSED] No duplicate admission found');
 
     const isPG = isPGCourse(normCourse);
-    const category = isPG ? 'PG' : 'UG';
+    const computedCategory = isPG ? 'PG' : 'UG';
+    const category = (reqCategory || admissionType || computedCategory).toUpperCase();
+
+    // Mode: Online Seat Booking / Offline Campus Counseling / Online Counseling (Remote)
+    const mode = reqMode || appointmentType || 'Online Seat Booking';
+
     const year = new Date().getFullYear();
     const tokenNumber = `AIET-${year}-${category}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const now = new Date();
+    const admissionDate = now.toISOString().split('T')[0];
+    const admissionTime = now.toTimeString().split(' ')[0];
+    const formattedTime = `${admissionDate} ${admissionTime}`;
+
+    // Capture IP Address & User Agent Browser
+    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '';
+    const ipAddress = (typeof rawIp === 'string' ? rawIp.split(',')[0] : rawIp) || '127.0.0.1';
+    const browser = req.headers['user-agent'] || 'Unknown Browser';
 
     const admission = await Admission.create({
       tokenNumber,
@@ -58,12 +89,16 @@ export const createAdmission = async (req, res, next) => {
       email: normEmail,
       phone: normPhone,
       course: normCourse,
+      branch: normCourse,
       category,
-      appointmentType: 'Online Seat Booking',
+      appointmentType: mode,
+      mode,
       seatSlot: 'Provisionally Reserved',
       status: 'Pending',
-      admissionDate: new Date().toISOString().split('T')[0],
-      admissionTime: new Date().toTimeString().split(' ')[0],
+      admissionDate,
+      admissionTime,
+      ipAddress,
+      browser,
     });
 
     console.log(`✅ [MONGODB SAVE SUCCESS] Document created in Admissions collection. ID: ${admission._id}`);
@@ -74,7 +109,7 @@ export const createAdmission = async (req, res, next) => {
       email: admission.email,
       phone: admission.phone,
       course: admission.course,
-      appointmentType: 'Online Seat Booking',
+      appointmentType: admission.mode,
       category: admission.category,
       createdAt: admission.createdAt,
     };
@@ -93,6 +128,38 @@ export const createAdmission = async (req, res, next) => {
 
     console.log('✅ [ADMIN DASHBOARD DATA AVAILABLE] Record synced successfully for real-time dashboard viewing.');
 
+    // Dispatch Student Confirmation Email & Admin Notification Email
+    const emailData = {
+      name: admission.name,
+      email: admission.email,
+      phone: admission.phone,
+      category: admission.category,
+      mode: admission.mode,
+      course: admission.course,
+      submissionDate: admission.admissionDate,
+      submissionTime: formattedTime,
+      tokenNumber: admission.tokenNumber,
+      ipAddress: admission.ipAddress,
+      browser: admission.browser,
+    };
+
+    Promise.allSettled([
+      sendStudentConfirmationEmail(emailData),
+      sendAdminNotificationEmail(emailData),
+    ]).then((results) => {
+      if (results[0].status === 'fulfilled') {
+        console.log('✅ [STUDENT EMAIL SUCCESS] Student confirmation email processed.');
+      } else {
+        console.error('❌ [STUDENT EMAIL ERROR]:', results[0].reason);
+      }
+
+      if (results[1].status === 'fulfilled') {
+        console.log('✅ [ADMIN EMAIL SUCCESS] Admin notification email processed.');
+      } else {
+        console.error('❌ [ADMIN EMAIL ERROR]:', results[1].reason);
+      }
+    });
+
     res.status(201).json({
       success: true,
       message: 'Seat booking request saved successfully.',
@@ -101,6 +168,8 @@ export const createAdmission = async (req, res, next) => {
         tokenNumber: admission.tokenNumber,
         name: admission.name,
         course: admission.course,
+        category: admission.category,
+        mode: admission.mode,
       },
     });
   } catch (error) {

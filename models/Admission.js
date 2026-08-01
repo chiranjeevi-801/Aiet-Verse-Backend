@@ -28,11 +28,19 @@ const admissionSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    branch: {
+      type: String,
+      trim: true,
+    },
     department: {
       type: String,
       default: 'Engineering & Technology',
     },
     appointmentType: {
+      type: String,
+      default: 'Online Seat Booking',
+    },
+    mode: {
       type: String,
       default: 'Online Seat Booking',
     },
@@ -59,6 +67,12 @@ const admissionSchema = new mongoose.Schema(
       type: String,
     },
     admissionTime: {
+      type: String,
+    },
+    ipAddress: {
+      type: String,
+    },
+    browser: {
       type: String,
     },
   },

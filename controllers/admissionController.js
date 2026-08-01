@@ -149,8 +149,18 @@ export const createAdmission = async (req, res, next) => {
     ]).then((results) => {
       if (results[0].status === 'fulfilled') {
         console.log('✅ [STUDENT EMAIL SUCCESS] Student confirmation email processed.');
+        res.status(201).json({
+          success: true,
+          message: 'Seat booking request saved successfully.',
+          emaildata : emailData,
+        })
       } else {
         console.error('❌ [STUDENT EMAIL ERROR]:', results[0].reason);
+        res.status(201).json({
+          success: false,
+          message: 'Seat booking request saved successfully but email not sent.',
+          emaildata : emailData,
+        })
       }
 
       if (results[1].status === 'fulfilled') {
@@ -163,6 +173,7 @@ export const createAdmission = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Seat booking request saved successfully.',
+      emaildata : emailData,
       data: {
         id: admission._id,
         tokenNumber: admission.tokenNumber,

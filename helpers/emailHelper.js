@@ -3,7 +3,8 @@ import nodemailer from 'nodemailer';
 let cachedTransporter = null;
 
 /**
- * Creates and returns cached nodemailer transporter using environment configuration
+ * Creates and returns cached nodemailer transporter using environment configuration.
+ * Throws explicit error if required environment variables are missing.
  */
 const getTransporter = () => {
   if (cachedTransporter) return cachedTransporter;
@@ -13,54 +14,61 @@ const getTransporter = () => {
   const user = process.env.EMAIL_USER || process.env.SMTP_USER;
   const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
-  if (user && pass) {
-    cachedTransporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      pool: true,
-      maxConnections: 5,
-      maxMessages: 100,
-      family: 4, // Force IPv4 resolution to prevent IPv6 socket timeouts on Render/cloud hosts
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      auth: { user, pass },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-    return cachedTransporter;
+  const missing = [];
+  if (!user) missing.push('EMAIL_USER / SMTP_USER');
+  if (!pass) missing.push('EMAIL_PASS / SMTP_PASS');
+
+  if (missing.length > 0) {
+    console.error('❌ [SMTP CREDENTIALS MISSING] Missing required environment variables on host environment:');
+    missing.forEach((item) => console.error(`   - Missing: ${item}`));
+    throw new Error(`SMTP configuration error: Missing required environment variable(s): ${missing.join(', ')}`);
   }
 
-  return null;
+  // Log host, port, and authenticated user address (without password)
+  console.log('📧 [SMTP CONFIG INITIALIZED]');
+  console.log(`   Host: ${host}`);
+  console.log(`   Port: ${port}`);
+  console.log(`   Authenticated User: ${user}`);
+  console.log(`   Secure: ${port === 465}`);
+
+  cachedTransporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    family: 4, // Force IPv4 resolution to prevent IPv6 socket timeouts on Render/cloud hosts
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    auth: { user, pass },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  return cachedTransporter;
 };
 
 /**
- * Verifies the SMTP transport connection on server startup
+ * Verifies the SMTP transport connection during server startup
  */
 export const verifyEmailSetup = async () => {
-  const user = process.env.EMAIL_USER || process.env.SMTP_USER;
-  const pass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
-
-  if (!user || !pass) {
-    console.warn('⚠️ [SMTP WARNING] EMAIL_USER or EMAIL_PASS environment variables are missing! Email delivery will run in MOCK mode.');
-    return false;
-  }
-
-  const transporter = getTransporter();
-  if (!transporter) {
-    console.error('❌ [SMTP ERROR] Failed to initialize Nodemailer transporter.');
-    return false;
-  }
-
   try {
+    const transporter = getTransporter();
+    console.log('🔍 [SMTP VERIFYING] Verifying SMTP transporter connection...');
     await transporter.verify();
-    console.log('✅ [SMTP SUCCESS] Connected to mail server successfully. Transporter is ready to send emails.');
+    console.log('✅ [SMTP VERIFICATION SUCCESS] Connected to mail server successfully. Transporter is ready to send emails.');
     return true;
   } catch (error) {
-    console.error('❌ [SMTP CONNECTION FAILED] Unable to verify SMTP connection:', error.message);
-    console.error('   Diagnostic Hint: Verify EMAIL_USER, EMAIL_PASS (Gmail App Password), EMAIL_HOST, and EMAIL_PORT on Render.');
+    console.error('❌ [SMTP VERIFICATION FAILED] Transporter failed verification during server startup:');
+    console.error(`   Error Message: ${error.message}`);
+    console.error(`   Error Code: ${error.code || 'N/A'}`);
+    console.error(`   Error Command: ${error.command || 'N/A'}`);
+    console.error(`   Error Response: ${error.response || 'N/A'}`);
+    console.error(`   Error ResponseCode: ${error.responseCode || 'N/A'}`);
+    console.error('   Stack Trace:\n', error.stack);
     return false;
   }
 };
@@ -383,27 +391,29 @@ Admissions Office
 Alva's Institute of Engineering & Technology
   `.trim();
 
-  const transporter = getTransporter();
-  if (transporter) {
-    try {
-      const info = await transporter.sendMail({
-        from: fromEmail,
-        to: email,
-        subject,
-        text: textContent,
-        html: htmlContent,
-      });
-      console.log(`✅ [STUDENT EMAIL SENT] Confirmation email sent to ${email}. Message ID: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
-    } catch (err) {
-      console.error(`❌ [STUDENT EMAIL FAILED] Error sending email to ${email}:`, err.message);
-      return { success: false, error: err.message };
-    }
-  } else {
-    console.log(`📧 [EMAIL MOCK] Student confirmation email simulated for ${email}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   Application ID: ${tokenNumber}`);
-    return { success: true, mock: true };
+  try {
+    const transporter = getTransporter();
+    console.log(`📧 [STUDENT EMAIL SENDING] Sending student email to: ${email}`);
+    
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: email,
+      subject,
+      text: textContent,
+      html: htmlContent,
+    });
+    
+    console.log(`✅ [STUDENT EMAIL SENT] Confirmation email sent to ${email}. Message ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(`❌ [STUDENT EMAIL FAILED] Error sending email to ${email}:`);
+    console.error(`   Error Message: ${err.message}`);
+    console.error(`   Error Code: ${err.code || 'N/A'}`);
+    console.error(`   Error Command: ${err.command || 'N/A'}`);
+    console.error(`   Error Response: ${err.response || 'N/A'}`);
+    console.error(`   Error ResponseCode: ${err.responseCode || 'N/A'}`);
+    console.error('   Stack Trace:\n', err.stack);
+    return { success: false, error: err.message };
   }
 };
 
@@ -596,27 +606,28 @@ IP Address: ${ipAddress}
 Browser: ${browser}
   `.trim();
 
-  const transporter = getTransporter();
-  if (transporter) {
-    try {
-      const info = await transporter.sendMail({
-        from: fromEmail,
-        to: adminEmail,
-        subject,
-        text: textContent,
-        html: htmlContent,
-      });
-      console.log(`✅ [ADMIN EMAIL SENT] Notification email sent to ${adminEmail}. Message ID: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
-    } catch (err) {
-      console.error(`❌ [ADMIN EMAIL FAILED] Error sending email to ${adminEmail}:`, err.message);
-      return { success: false, error: err.message };
-    }
-  } else {
-    console.log(`📧 [EMAIL MOCK] Admin notification email simulated for ${adminEmail}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   Student Name: ${name}`);
-    console.log(`   Application ID: ${tokenNumber}`);
-    return { success: true, mock: true };
+  try {
+    const transporter = getTransporter();
+    console.log(`📧 [ADMIN EMAIL SENDING] Sending admin email to: ${adminEmail}`);
+
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: adminEmail,
+      subject,
+      text: textContent,
+      html: htmlContent,
+    });
+
+    console.log(`✅ [ADMIN EMAIL SENT] Notification email sent to ${adminEmail}. Message ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(`❌ [ADMIN EMAIL FAILED] Error sending email to ${adminEmail}:`);
+    console.error(`   Error Message: ${err.message}`);
+    console.error(`   Error Code: ${err.code || 'N/A'}`);
+    console.error(`   Error Command: ${err.command || 'N/A'}`);
+    console.error(`   Error Response: ${err.response || 'N/A'}`);
+    console.error(`   Error ResponseCode: ${err.responseCode || 'N/A'}`);
+    console.error('   Stack Trace:\n', err.stack);
+    return { success: false, error: err.message };
   }
 };

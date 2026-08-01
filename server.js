@@ -18,12 +18,15 @@ import contactRoutes from './routes/contactRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
+import { verifyEmailSetup } from './helpers/emailHelper.js';
+
 // Load env vars
 dotenv.config();
 
-// Connect to Database and Seed Admin Users
+// Connect to Database, Seed Admin Users, and Verify SMTP Email Setup
 connectDB().then(() => {
   seedAdminUsers();
+  verifyEmailSetup();
 });
 
 const app = express();
@@ -34,9 +37,9 @@ app.use(compression());
 app.use(cookieParser());
 app.use(express.json());
 
-// CORS config restricted to React Frontend
+// CORS configuration to allow all origins
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));

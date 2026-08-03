@@ -143,46 +143,46 @@ export const createAdmission = async (req, res, next) => {
       browser: admission.browser,
     };
 
-    Promise.allSettled([
-      sendStudentConfirmationEmail(emailData),
-      sendAdminNotificationEmail(emailData),
-    ]).then((results) => {
-      if (results[0].status === 'fulfilled') {
-        console.log('✅ [STUDENT EMAIL SUCCESS] Student confirmation email processed.');
-        res.status(201).json({
-          success: true,
-          message: 'Seat booking request saved successfully.',
-          emaildata : emailData,
-        })
-      } else {
-        console.error('❌ [STUDENT EMAIL ERROR]:', results[0].reason);
-        res.status(201).json({
-          success: false,
-          message: 'Seat booking request saved successfully but email not sent.',
-          emaildata : emailData,
-        })
-      }
+// =======================
+// Send Emails
+// =======================
 
-      if (results[1].status === 'fulfilled') {
-        console.log('✅ [ADMIN EMAIL SUCCESS] Admin notification email processed.');
-      } else {
-        console.error('❌ [ADMIN EMAIL ERROR]:', results[1].reason);
-      }
-    });
+const studentResult = await sendStudentConfirmationEmail(emailData);
+const adminResult = await sendAdminNotificationEmail(emailData);
 
-    res.status(201).json({
-      success: true,
-      message: 'Seat booking request saved successfully.',
-      emaildata : emailData,
-      data: {
-        id: admission._id,
-        tokenNumber: admission.tokenNumber,
-        name: admission.name,
-        course: admission.course,
-        category: admission.category,
-        mode: admission.mode,
-      },
-    });
+// Student Email Status
+if (studentResult.success) {
+  console.log("✅ [STUDENT EMAIL SUCCESS]");
+} else {
+  console.error("❌ [STUDENT EMAIL FAILED]", studentResult.error);
+}
+
+// Admin Email Status
+if (adminResult.success) {
+  console.log("✅ [ADMIN EMAIL SUCCESS]");
+} else {
+  console.error("❌ [ADMIN EMAIL FAILED]", adminResult.error);
+}
+
+// Send ONLY ONE response to frontend
+return res.status(201).json({
+  success: true,
+  message: studentResult.success
+    ? "Seat booking request saved successfully."
+    : "Admission saved successfully, but student email could not be sent.",
+  emailStatus: {
+    student: studentResult.success,
+    admin: adminResult.success,
+  },
+  data: {
+    id: admission._id,
+    tokenNumber: admission.tokenNumber,
+    name: admission.name,
+    course: admission.course,
+    category: admission.category,
+    mode: admission.mode,
+  },
+});
   } catch (error) {
     console.error('❌ [ERROR IN CREATE ADMISSION]:', error.message, error.stack);
     if (error.code === 11000) {

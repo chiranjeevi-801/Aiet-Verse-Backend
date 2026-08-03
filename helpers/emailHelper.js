@@ -35,13 +35,11 @@ const getTransporter = () => {
     host,
     port,
     secure: port === 465,
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
+    pool: false,
     family: 4, // Force IPv4 resolution to prevent IPv6 socket timeouts on Render/cloud hosts
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 35000,
     auth: { user, pass },
     tls: {
       rejectUnauthorized: false

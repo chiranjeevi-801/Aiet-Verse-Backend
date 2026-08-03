@@ -36,14 +36,10 @@ const getTransporter = () => {
     port,
     secure: port === 465,
     pool: false,
-    family: 4, // Force IPv4 resolution to prevent IPv6 socket timeouts on Render/cloud hosts
     connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 35000,
     auth: { user, pass },
-    tls: {
-      rejectUnauthorized: false
-    }
   });
 
   return cachedTransporter;
